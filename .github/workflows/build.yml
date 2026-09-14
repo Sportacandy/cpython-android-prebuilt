@@ -166,4 +166,3 @@ jobs:
             own pure-Python release, since Android can't execute a downloaded
             native binary).
           generate_release_notes: true
-          generate_release_notes: true
