@@ -71,6 +71,27 @@ jobs:
           echo "path=$(pwd)/$PKG" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$PKG")" >> "$GITHUB_OUTPUT"
 
+      # Consumers embed this .so into apps built with their OWN, possibly
+      # different, NDK version. That's fine for the C embedding API (Python.h
+      # is a plain C API, ABI-stable across NDK versions) -- the one thing
+      # that WOULD matter is if this .so dynamically depends on a shared
+      # libc++_shared.so, since then its version would need to match whatever
+      # libc++_shared.so the consuming app bundles. android-env.sh's own
+      # build flags (no ANDROID_STL=c++_shared, -Wl,--no-undefined) suggest
+      # it doesn't -- this step confirms that concretely on every build
+      # instead of relying on that inference.
+      - name: Verify libpython has no shared libc++ dependency
+        working-directory: cpython/Android
+        run: |
+          SO=$(find cross-build/${{ matrix.host }} -name 'libpython3.*.so' -not -path '*/dist/*' | head -1)
+          echo "Checking $SO"
+          readelf -d "$SO" | tee /tmp/needed.txt
+          if grep -q 'libc++_shared\.so' /tmp/needed.txt; then
+            echo "::warning::libpython.so depends on libc++_shared.so -- consumers must match its libc++_shared.so version exactly, not just the ABI/API level."
+          else
+            echo "OK: no libc++_shared.so dependency -- safe to link against apps built with a different NDK version."
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
