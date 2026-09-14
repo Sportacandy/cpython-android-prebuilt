@@ -127,8 +127,43 @@ jobs:
         with:
           path: dist
 
+      - name: Extract CPython version from an artifact filename
+        id: ver
+        run: |
+          NAME=$(basename "$(ls dist/*/python-*.tar.gz | head -1)")
+          # python-3.14.7-aarch64-linux-android.tar.gz -> 3.14.7
+          VERSION=$(echo "$NAME" | sed -E 's/^python-([0-9.]+)-.*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/**/*.tar.gz
+          name: "CPython ${{ steps.ver.outputs.version }} for Android"
+          body: |
+            Prebuilt `libpython3.x.so` + standard library for Android,
+            cross-compiled via CPython's own official Android build support
+            (`Android/android.py`, [PEP 738](https://peps.python.org/pep-0738/)) --
+            see this repo's README for what's in each tarball and how to use it.
+
+            - **CPython version:** ${{ steps.ver.outputs.version }}
+            - **Targets:** `aarch64-linux-android` (arm64-v8a, real devices),
+              `x86_64-linux-android` (emulators)
+            - **Minimum Android API level:** 24
+            - **NDK version used to build:** pinned by CPython itself in
+              `Android/android-env.sh` at this tag (currently 27.3.13750724) --
+              this is independent of whatever NDK version your own app is built
+              with; `libpython.so` has no dependency on a shared `libc++_shared.so`
+              (verified by this workflow's own `readelf` check on every build), so
+              there's no ABI conflict to worry about there.
+            - **License:** the tarball contents are CPython itself, unmodified,
+              under the [PSF License](https://docs.python.org/3/license.html).
+              This repo's own build scripts are MIT-licensed.
+
+            Not yet used in production by anything -- first consumer in progress
+            is [Vivace](https://github.com/Sportacandy/vivace) (YouTube URL
+            resolution on Android via an embedded interpreter running yt-dlp's
+            own pure-Python release, since Android can't execute a downloaded
+            native binary).
+          generate_release_notes: true
           generate_release_notes: true
