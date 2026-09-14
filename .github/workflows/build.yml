@@ -121,6 +121,13 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    # GitHub defaults new repos' auto-issued GITHUB_TOKEN to read-only
+    # permissions -- softprops/action-gh-release needs contents: write to
+    # create the release (and, with generate_release_notes: true, to call
+    # the "generate release notes" API), or it fails with "Resource not
+    # accessible by integration".
+    permissions:
+      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
