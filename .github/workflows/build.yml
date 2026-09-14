@@ -75,9 +75,15 @@ jobs:
         working-directory: cpython/Android
         run: ./android.py package ${{ matrix.host }}
 
+      # NOTE: cross-build/ lives directly under cpython/ (the repo root),
+      # NOT under cpython/Android/ -- confirmed from the Package step's own
+      # printed "Wrote .../cpython/cross-build/<host>/dist/....tar.gz" line,
+      # after an earlier version of this workflow got this wrong (looked
+      # for it under cpython/Android/cross-build/ instead) and failed here
+      # with "No such file or directory".
       - name: Locate package
         id: pkg
-        working-directory: cpython/Android
+        working-directory: cpython
         run: |
           PKG=$(ls cross-build/${{ matrix.host }}/dist/python-*-${{ matrix.host }}.tar.gz)
           echo "path=$(pwd)/$PKG" >> "$GITHUB_OUTPUT"
@@ -93,7 +99,7 @@ jobs:
       # it doesn't -- this step confirms that concretely on every build
       # instead of relying on that inference.
       - name: Verify libpython has no shared libc++ dependency
-        working-directory: cpython/Android
+        working-directory: cpython
         run: |
           SO=$(find cross-build/${{ matrix.host }} -name 'libpython3.*.so' -not -path '*/dist/*' | head -1)
           echo "Checking $SO"
