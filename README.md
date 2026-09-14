@@ -42,14 +42,36 @@ For each target (a GNU triple, matching what `android.py` itself accepts —
 | `x86_64-linux-android`   | `x86_64` (emulators) |
 
 Each release asset is a plain `python-{version}-{target}.tar.gz` (exactly
-what `android.py package` produces, untouched), containing:
+what `android.py package` produces, untouched). Verified against a real
+build's actual contents (this doc was wrong about the layout once already —
+don't trust it blindly, `tar -tzf` a release asset yourself if in doubt):
 
 ```
-include/           # Python.h and friends, for embedding
-lib/libpython3.x.so
-lib/python3.x/     # the standard library
-lib/pkgconfig/
+prefix/include/python3.x/   # Python.h and friends, for embedding
+prefix/lib/libpython3.x.so
+prefix/lib/libpython3.so    # unversioned copy of the same library
+prefix/lib/python3.x/       # the standard library, as a plain directory
+                             # tree (not pre-zipped) -- includes CPython's
+                             # own _android_support.py bootstrap module,
+                             # and the full test/ suite (you'll likely want
+                             # to strip that when repackaging into your own
+                             # app's assets)
+prefix/lib/libssl.so, libcrypto.so, libsqlite3.so, ...
+prefix/lib/pkgconfig/
+README.md, android.py, android-env.sh   # copies of CPython's own Android/
+                                         # directory, for reference
+testbed/                                # CPython's own Gradle/Kotlin sample
+                                         # app exercising this build -- a
+                                         # useful embedding reference, not
+                                         # something you need to ship
 ```
+
+The `.so` files' NEEDED entries were confirmed (via the workflow's own
+"Verify libpython has no shared libc++ dependency" step) to be only plain
+bionic libraries (`libc.so`, `libm.so`, `libdl.so`, `liblog.so`) -- no
+dependency on `libc++_shared.so`, so linking this into an app built with a
+*different* NDK version than this workflow's own pinned one is safe (see
+that step's own comment for the reasoning).
 
 Minimum Android API level: **24** (CPython 3.14's own default; see
 `Android/android-env.sh` in the CPython source for the current value if the
@@ -60,15 +82,17 @@ pinned version is bumped).
 1. Download the `.tar.gz` for your target triple from the
    [Releases](https://github.com/Sportacandy/cpython-android-prebuilt/releases)
    page and extract it.
-2. Link `lib/libpython3.x.so` into your native app; add `include/` to your
-   include path.
-3. Bundle `lib/python3.x/` (the stdlib) as an asset your app extracts (or
-   reads directly, e.g. as a zip) to a private, writable directory at first
-   run, and point `PyConfig.pythonpath_env` / `Py_SetPath` at it before
+2. Link `prefix/lib/libpython3.x.so` into your native app; add
+   `prefix/include/python3.x/` to your include path.
+3. Bundle `prefix/lib/python3.x/` (the stdlib) as an asset your app extracts
+   to a private, writable directory at first run (optionally stripping
+   `test/`, `idlelib/`, `tkinter/` first to save space), and point
+   `PyConfig.pythonpath_env` / `Py_SetPath` at it before
    `Py_InitializeFromConfig`.
 4. See <https://docs.python.org/3/using/android.html> for the embedding API
-   itself — this repo only produces the prebuilt library, not app-side glue
-   code.
+   itself, and `testbed/app/src/main/c/main_activity.c` in a release asset
+   for CPython's own reference embedding code — this repo only produces the
+   prebuilt library, not app-side glue code.
 
 ## Building a new version
 
