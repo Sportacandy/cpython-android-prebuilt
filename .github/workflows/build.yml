@@ -55,6 +55,18 @@ jobs:
       - name: Check out CPython
         run: git clone --branch "$CPYTHON_REF" --depth 1 https://github.com/python/cpython.git cpython
 
+      # "build" takes a positional `target` (all/build/hosts/<HOST triple>),
+      # defaulting to "all". Passing a specific host triple directly (as a
+      # first try here did) skips build_targets()'s own
+      # `if context.target in {"all", "build"}:` branch that builds the
+      # build-platform "helper" Python -- and configure/make-host then fails
+      # immediately since that helper tree doesn't exist yet. So this needs
+      # two separate invocations: "build" first (builds only the helper),
+      # then the specific host (now that the helper it depends on exists).
+      - name: Build build-platform Python (cross-compilation helper)
+        working-directory: cpython/Android
+        run: ./android.py build build
+
       - name: Build ${{ matrix.host }}
         working-directory: cpython/Android
         run: ./android.py build ${{ matrix.host }}
