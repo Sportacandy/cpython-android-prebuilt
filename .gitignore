@@ -1,0 +1,3 @@
+cpython/
+cross-build/
+*.tar.gz

@@ -1,0 +1,95 @@
+name: Build CPython for Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      cpython_ref:
+        description: "CPython git tag/ref to build (e.g. v3.14.7)"
+        required: true
+        default: "v3.14.7"
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build ${{ matrix.host }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # GNU target triples, as accepted by CPython's own Android/android.py
+        # (NOT the Gradle-style ABI names like "arm64-v8a"/"x86_64").
+        host:
+          - aarch64-linux-android
+          - x86_64-linux-android
+    env:
+      CPYTHON_REF: ${{ github.event.inputs.cpython_ref || 'v3.14.7' }}
+    steps:
+      - name: Set up JDK (needed by the Android SDK's sdkmanager)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # android.py auto-installs its own pinned NDK version (currently
+      # 27.3.13750724, read from cpython/Android/android-env.sh) via
+      # sdkmanager, as long as ANDROID_HOME points at a valid SDK with
+      # cmdline-tools -- already true on GitHub's hosted Ubuntu runners.
+      # This just makes sure the SDK licenses are pre-accepted so that
+      # auto-install step doesn't block on an interactive prompt.
+      - name: Accept Android SDK licenses
+        run: |
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            for d in "$ANDROID_HOME"/cmdline-tools/*/bin; do
+              if [ -x "$d/sdkmanager" ]; then SDKMANAGER="$d/sdkmanager"; break; fi
+            done
+          fi
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses || true
+          else
+            echo "sdkmanager not found on PATH -- relying on android.py's own auto-install"
+          fi
+
+      - name: Check out CPython
+        run: git clone --branch "$CPYTHON_REF" --depth 1 https://github.com/python/cpython.git cpython
+
+      - name: Build ${{ matrix.host }}
+        working-directory: cpython/Android
+        run: ./android.py build ${{ matrix.host }}
+
+      - name: Package ${{ matrix.host }}
+        working-directory: cpython/Android
+        run: ./android.py package ${{ matrix.host }}
+
+      - name: Locate package
+        id: pkg
+        working-directory: cpython/Android
+        run: |
+          PKG=$(ls cross-build/${{ matrix.host }}/dist/python-*-${{ matrix.host }}.tar.gz)
+          echo "path=$(pwd)/$PKG" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$PKG")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pkg.outputs.name }}
+          path: ${{ steps.pkg.outputs.path }}
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*.tar.gz
+          generate_release_notes: true
